@@ -1,13 +1,14 @@
-"""
-Multi-Agent Proximal Policy Optimization (MAPPO)
-Paper link:
-https://arxiv.org/pdf/2103.01955.pdf
-Implementation: Pytorch
-"""
 from xuance.torchAgent.learners import *
 from xuance.torchAgent.utils.value_norm import ValueNorm
 from xuance.torchAgent.utils.operations import update_linear_decay
 
+import torch.nn as nn
+import torch.nn.functional as F
+import torch
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from redistribute import EnhancedCausalModel
 
 class MAPPO_Clip_Learner(LearnerMAS):
     def __init__(self,
@@ -38,6 +39,9 @@ class MAPPO_Clip_Learner(LearnerMAS):
         self.lr = config.learning_rate
         self.end_factor_lr_decay = config.end_factor_lr_decay
 
+        self.causal_model = EnhancedCausalModel(config.n_agents, config.obs_shape[0], config.act_shape[0], device)
+        self.n_iters = config.running_steps
+
     def lr_decay(self, i_step):
         if self.use_linear_lr_decay:
             update_linear_decay(self.optimizer, i_step, self.running_steps, self.lr, self.end_factor_lr_decay)
@@ -55,6 +59,12 @@ class MAPPO_Clip_Learner(LearnerMAS):
         agent_mask = torch.Tensor(sample['agent_mask']).float().reshape(-1, self.n_agents, 1).to(self.device)
         batch_size = obs.shape[0]
         IDs = torch.eye(self.n_agents).unsqueeze(0).expand(batch_size, -1, -1).to(self.device)
+
+        # Calculate social contribution index and redistribute rewards
+        social_contribution_index = self.causal_model.calculate_social_contribution_index(obs, actions)
+        tax_rates = self.causal_model.calculate_tax_rates(social_contribution_index)
+        alpha = 1.0 - (self.iterations / self.n_iters)  # Calculate alpha which decays from 1 to 0 over iterations
+        new_returns = self.causal_model.redistribute_rewards(returns, social_contribution_index, tax_rates, beta=0.5, alpha=alpha)
 
         # actor loss
         _, pi_dist = self.policy(obs, IDs)
@@ -74,7 +84,7 @@ class MAPPO_Clip_Learner(LearnerMAS):
         critic_in = critic_in.expand(-1, self.n_agents, -1)
         _, value_pred = self.policy.get_values(critic_in, IDs)
         value_pred = value_pred.reshape(-1, 1)
-        value_target = returns.reshape(-1, 1)
+        value_target = new_returns.reshape(-1, 1)
         values = values.reshape(-1, 1)
         agent_mask_flatten = agent_mask.reshape(-1, 1)
         if self.use_value_clip:
@@ -143,6 +153,12 @@ class MAPPO_Clip_Learner(LearnerMAS):
         IDs = torch.eye(self.n_agents).unsqueeze(1).unsqueeze(0).expand(batch_size, -1, episode_length + 1, -1).to(
             self.device)
 
+        # Calculate social contribution index and redistribute rewards
+        social_contribution_index = self.causal_model.calculate_social_contribution_index(obs, actions)
+        tax_rates = self.causal_model.calculate_tax_rates(social_contribution_index)
+        alpha = 1.0 - (self.iterations / self.n_iters)  # Calculate alpha which decays from 1 to 0 over iterations
+        new_returns = self.causal_model.redistribute_rewards(returns, social_contribution_index, tax_rates, beta=0.5, alpha=alpha)
+
         # actor loss
         rnn_hidden_actor = self.policy.representation.init_hidden(batch_size * self.n_agents)
         _, pi_dist = self.policy(obs[:, :, :-1].reshape(-1, episode_length, self.dim_obs),
@@ -172,7 +188,7 @@ class MAPPO_Clip_Learner(LearnerMAS):
             critic_in = obs[:, :, :-1].transpose(1, 2).reshape(batch_size, episode_length, -1)
             critic_in = critic_in.unsqueeze(1).expand(-1, self.n_agents, -1, -1)
         _, value_pred = self.policy.get_values(critic_in, IDs[:, :, :-1], *rnn_hidden_critic)
-        value_target = returns.reshape(-1, 1)
+        value_target = new_returns.reshape(-1, 1)
         values = values.reshape(-1, 1)
         value_pred = value_pred.reshape(-1, 1)
         filled_all = filled_n.reshape(-1, 1)

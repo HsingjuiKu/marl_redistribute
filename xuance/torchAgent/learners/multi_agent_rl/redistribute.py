@@ -27,17 +27,18 @@ class EnhancedCausalModel(nn.Module):
         batch_size, num_agents, obs_dim = obs.shape
         influences = []
 
-        for k in range(num_agents):  # Loop range increased by 10 times
-            agent_idx = k % num_agents  # Ensure index stays within bounds
+        adaptive_factor = max(10, num_agents)
+
+        for k in range(num_agents):
+            agent_idx = k % num_agents
             obs_k = obs[:, agent_idx]
             action_k = actions[:, agent_idx]
             p_with_k = self.predict_others_actions(obs_k, action_k)
-            # Calculate p_without_k by averaging over several counterfactual actions
             p_without_k = self.predict_others_actions(obs_k, torch.zeros_like(action_k).to(self.device))
-            for _ in range(10):  # Sample 10 counterfactual actions
+            for _ in range(adaptive_factor):
                 counterfactual_actions = torch.rand_like(action_k).to(self.device)  # Generate random actions
                 p_without_k += self.predict_others_actions(obs_k, counterfactual_actions)
-            p_without_k /= 11  # Including the initial zero action
+            p_without_k /= (adaptive_factor + 1)
 
             influence = F.kl_div(
                 p_with_k.log_softmax(dim=-1),
@@ -45,9 +46,9 @@ class EnhancedCausalModel(nn.Module):
                 reduction='batchmean'
             )
             influences.append(influence.unsqueeze(-1))
-        influences = torch.stack(influences, dim=-1)  # Shape: [batch_size, 10*num_agents, 1]
+        influences = torch.stack(influences, dim=-1)
         influences = F.softmax(influences, dim=-2)
-        influences = influences.unsqueeze(1)  # Shape: [batch_size, 1, 10*num_agents]
+        influences = influences.unsqueeze(1)
         return influences
 
     def calculate_social_contribution_index(self, obs, actions):
@@ -61,5 +62,6 @@ class EnhancedCausalModel(nn.Module):
         central_pool = (tax_rates * original_rewards).sum(dim=1, keepdim=True)
         normalized_contributions = social_contribution_index / (social_contribution_index.sum(dim=1, keepdim=True) + 1e-8)
         redistributed_rewards = (1 - tax_rates) * original_rewards + beta * normalized_contributions * central_pool
-        return alpha * redistributed_rewards + (1 - alpha) * original_rewards
-        # return redistributed_rewards
+        # return alpha * redistributed_rewards + (1 - alpha) * original_rewards
+        redistributed_rewards = redistributed_rewards.sum(dim=-1, keepdim=True)
+        return redistributed_rewards
