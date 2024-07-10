@@ -8,6 +8,13 @@ from xuance.torchAgent.learners import *
 from xuance.torchAgent.utils.value_norm import ValueNorm
 from xuance.torchAgent.utils.operations import update_linear_decay
 
+import torch.nn as nn
+import torch.nn.functional as F
+import torch
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from redistribute import EnhancedCausalModel
 
 class MAPPO_Clip_Learner(LearnerMAS):
     def __init__(self,
@@ -37,6 +44,9 @@ class MAPPO_Clip_Learner(LearnerMAS):
             self.value_normalizer = None
         self.lr = config.learning_rate
         self.end_factor_lr_decay = config.end_factor_lr_decay
+
+        self.causal_model = EnhancedCausalModel(config.n_agents, config.obs_shape[0], config.act_shape[0],device)
+        self.n_iters = config.running_steps
 
     def lr_decay(self, i_step):
         if self.use_linear_lr_decay:

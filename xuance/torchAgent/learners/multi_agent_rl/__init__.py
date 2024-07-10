@@ -15,3 +15,5 @@ from .ippo_learner import IPPO_Learner
 from .mappo_learner import MAPPO_Clip_Learner
 from .matd3_learner import MATD3_Learner
 from .mfac_learner import MFAC_Learner
+
+from .ASIRR import EnhancedCausalModel

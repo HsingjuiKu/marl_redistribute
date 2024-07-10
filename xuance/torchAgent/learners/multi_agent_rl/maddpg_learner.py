@@ -39,7 +39,7 @@ class MADDPG_Learner(LearnerMAS):
             'actor': scheduler[0],
             'critic': scheduler[1]
         }
-        self.causal_model = EnhancedCausalModel(config.n_agents, config.obs_shape[0], config.act_shape[0], device)
+        self.causal_model = EnhancedCausalModel(config.n_agents, config.obs_shape[0], config.act_shape[0],device)
         self.n_iters = config.running_steps
 
     def update(self, sample):
