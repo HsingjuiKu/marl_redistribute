@@ -5,7 +5,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="3086cc4a-d3f7-4a80-8ddf-b1bcffa73a3a" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/xuance/torchAgent/learners/multi_agent_rl/iql_learner1.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/xuance/torchAgent/learners/multi_agent_rl/coma_learner1.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xuance/torchAgent/agents/multi_agent_rl/coma_agents.py" beforeDir="false" afterPath="$PROJECT_DIR$/xuance/torchAgent/agents/multi_agent_rl/coma_agents.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xuance/torchAgent/learners/multi_agent_rl/coma_learner.py" beforeDir="false" afterPath="$PROJECT_DIR$/xuance/torchAgent/learners/multi_agent_rl/coma_learner.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xuance/torchAgent/learners/multi_agent_rl/wqmix_learner1.py" beforeDir="false" afterPath="$PROJECT_DIR$/xuance/torchAgent/learners/multi_agent_rl/wqmix_learner1.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -60,7 +64,7 @@
       <updated>1720596610209</updated>
       <workItem from="1720596611240" duration="9990000" />
       <workItem from="1720626281636" duration="1907000" />
-      <workItem from="1720673171012" duration="3818000" />
+      <workItem from="1720673171012" duration="6741000" />
     </task>
     <servers />
   </component>
