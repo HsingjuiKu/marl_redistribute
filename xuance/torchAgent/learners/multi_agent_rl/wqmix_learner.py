@@ -12,6 +12,7 @@ class WQMIX_Learner(LearnerMAS):
                  config: Namespace,
                  policy: nn.Module,
                  optimizer: torch.optim.Optimizer,
+                 env,
                  scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
                  device: Optional[Union[int, str, torch.device]] = None,
                  model_dir: str = "./",
