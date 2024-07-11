@@ -1,12 +1,10 @@
+"""
+Weighted QMIX
+Paper link:
+https://proceedings.neurips.cc/paper/2020/file/73a427badebe0e32caa2e1fc7530b7f3-Paper.pdf
+Implementation: Pytorch
+"""
 from xuance.torchAgent.learners import *
-import torch.nn as nn
-import torch.nn.functional as F
-import torch
-import sys
-import os
-
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from redistribute import EnhancedCausalModel
 
 
 class WQMIX_Learner(LearnerMAS):
@@ -14,25 +12,18 @@ class WQMIX_Learner(LearnerMAS):
                  config: Namespace,
                  policy: nn.Module,
                  optimizer: torch.optim.Optimizer,
+                 env,
                  scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
                  device: Optional[Union[int, str, torch.device]] = None,
                  model_dir: str = "./",
                  gamma: float = 0.99,
-                 sync_frequency: int = 100):
-        self.config = config
-        self.device = device
+                 sync_frequency: int = 100
+                 ):
         self.alpha = config.alpha
         self.gamma = gamma
         self.sync_frequency = sync_frequency
         self.mse_loss = nn.MSELoss()
         super(WQMIX_Learner, self).__init__(config, policy, optimizer, scheduler, device, model_dir)
-
-        self.causal_model_initialized = False  # To track if causal model is initialized
-        self.n_iters = config.running_steps
-
-    def initialize_causal_model(self, obs_shape, action_shape):
-        self.causal_model = EnhancedCausalModel(self.config.n_agents, obs_shape, action_shape, self.device)
-        self.causal_model_initialized = True
 
     def update(self, sample):
         self.iterations += 1
@@ -46,14 +37,6 @@ class WQMIX_Learner(LearnerMAS):
         agent_mask = torch.Tensor(sample['agent_mask']).float().reshape(-1, self.n_agents, 1).to(self.device)
         batch_size = actions.shape[0]
         IDs = torch.eye(self.n_agents).unsqueeze(0).expand(self.args.batch_size, -1, -1).to(self.device)
-
-        if not self.causal_model_initialized:
-            self.initialize_causal_model(obs.shape[0], actions.shape[0])
-
-        # Calculate social contribution index and redistribute rewards
-        social_contribution_index = self.causal_model.calculate_social_contribution_index(obs, actions)
-        tax_rates = self.causal_model.calculate_tax_rates(social_contribution_index)
-        new_rewards = self.causal_model.redistribute_rewards(rewards, social_contribution_index, tax_rates, beta=0.5)
 
         # calculate Q_tot
         _, action_max, q_eval = self.policy(obs, IDs)
@@ -75,7 +58,7 @@ class WQMIX_Learner(LearnerMAS):
         q_eval_next_centralized = self.policy.target_q_centralized(obs_next, IDs).gather(-1, action_next_greedy)
         q_tot_next_centralized = self.policy.target_q_feedforward(q_eval_next_centralized * agent_mask, state_next)
 
-        target_value = new_rewards + (1 - terminals) * self.args.gamma * q_tot_next_centralized
+        target_value = rewards + (1 - terminals) * self.args.gamma * q_tot_next_centralized
         td_error = q_tot_eval - target_value.detach()
 
         # calculate weights
@@ -90,7 +73,7 @@ class WQMIX_Learner(LearnerMAS):
             condition = td_error < 0
             w = torch.where(condition, ones, w)
         else:
-            raise AttributeError("You have assigned an unexpected WQMIX learner!")
+            AttributeError("You have assigned an unexpected WQMIX learner!")
 
         # calculate losses and train
         loss_central = self.mse_loss(q_tot_centralized, target_value.detach())
@@ -135,21 +118,12 @@ class WQMIX_Learner(LearnerMAS):
         IDs = torch.eye(self.n_agents).unsqueeze(1).unsqueeze(0).expand(batch_size, -1, episode_length + 1, -1).to(
             self.device)
 
-        if not self.causal_model_initialized:
-            self.initialize_causal_model(obs.shape[0], actions.shape[0])
-
-        # Calculate social contribution index and redistribute rewards
-        social_contribution_index = self.causal_model.calculate_social_contribution_index(obs, actions)
-        tax_rates = self.causal_model.calculate_tax_rates(social_contribution_index)
-        new_rewards = self.causal_model.redistribute_rewards(rewards, social_contribution_index, tax_rates, beta=0.5)
-
         # calculate Q_tot
         rnn_hidden = self.policy.representation.init_hidden(batch_size * self.n_agents)
         _, actions_greedy, q_eval = self.policy(obs.reshape(-1, episode_length + 1, self.dim_obs),
                                                 IDs.reshape(-1, episode_length + 1, self.n_agents),
                                                 *rnn_hidden,
-                                                avail_actions=avail_actions.reshape(-1, episode_length + 1,
-                                                                                    self.dim_act))
+                                                avail_actions=avail_actions.reshape(-1, episode_length + 1, self.dim_act))
         q_eval = q_eval[:, :-1].reshape(batch_size, self.n_agents, episode_length, self.dim_act)
         actions_greedy = actions_greedy.reshape(batch_size, self.n_agents, episode_length + 1, 1).detach()
         q_eval_a = q_eval.gather(-1, actions.long().reshape(batch_size, self.n_agents, episode_length, 1))
@@ -180,15 +154,14 @@ class WQMIX_Learner(LearnerMAS):
                                                                    IDs.reshape(-1, episode_length + 1, self.n_agents),
                                                                    *target_rnn_hidden)
         q_eval_next_centralized = q_eval_next_centralized[:, 1:].reshape(batch_size, self.n_agents, episode_length,
-                                                                         self.dim_act)
+                                                                      self.dim_act)
         q_eval_next_centralized_a = q_eval_next_centralized.gather(-1, action_next_greedy)
         q_eval_next_centralized_a = q_eval_next_centralized_a.transpose(1, 2).reshape(-1, self.n_agents, 1)
         q_tot_next_centralized = self.policy.target_q_feedforward(q_eval_next_centralized_a, state[:, 1:])
 
-        rewards = new_rewards.reshape(-1, 1)
+        rewards = rewards.reshape(-1, 1)
         terminals = terminals.reshape(-1, 1)
         filled = filled.reshape(-1, 1)
-
         target_value = rewards + (1 - terminals) * self.args.gamma * q_tot_next_centralized
         td_error = q_tot_eval - target_value.detach()
         td_error *= filled
@@ -207,7 +180,7 @@ class WQMIX_Learner(LearnerMAS):
             condition = td_error < 0
             w = torch.where(condition, ones, w)
         else:
-            raise AttributeError("You have assigned an unexpected WQMIX learner!")
+            AttributeError("You have assigned an unexpected WQMIX learner!")
 
         # calculate losses and train
         error_central = (q_tot_centralized - target_value.detach()) * filled
