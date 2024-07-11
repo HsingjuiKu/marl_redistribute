@@ -180,10 +180,10 @@ class WQMIX_Learner(LearnerMAS):
         q_eval_next_centralized_a = q_eval_next_centralized_a.transpose(1, 2).reshape(-1, self.n_agents, 1)
         q_tot_next_centralized = self.policy.target_q_feedforward(q_eval_next_centralized_a, state[:, 1:])
 
-        new_rewards = new_rewards.reshape(-1, 1)
+        rewards = new_rewards.reshape(-1, 1)
         terminals = terminals.reshape(-1, 1)
         filled = filled.reshape(-1, 1)
-        target_value = new_rewards + (1 - terminals) * self.args.gamma * q_tot_next_centralized
+        target_value = rewards + (1 - terminals) * self.args.gamma * q_tot_next_centralized
         td_error = q_tot_eval - target_value.detach()
         td_error *= filled
 
